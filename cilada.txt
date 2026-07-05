@@ -1,0 +1,803 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0,user-scalable=no"/>
+<title>CILADA!</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;}
+body{
+  background:#0d1117;
+  display:flex;flex-direction:column;align-items:center;
+  height:100vh;overflow:hidden;
+  font-family:'Arial Black',Arial,sans-serif;
+  user-select:none;touch-action:none;
+}
+#header{
+  width:100%;max-width:440px;
+  background:linear-gradient(135deg,#c62828,#e53935);
+  padding:10px 16px 8px;
+  display:flex;align-items:center;justify-content:space-between;
+  box-shadow:0 4px 15px rgba(0,0,0,0.5);
+  flex-shrink:0;
+}
+#gameTitle{
+  color:#FFD700;font-size:28px;letter-spacing:3px;
+  text-shadow:2px 2px 0 rgba(0,0,0,0.4);
+}
+.hstat{text-align:center;color:white;}
+.hnum{font-size:22px;font-weight:900;line-height:1;}
+.hlbl{font-size:9px;opacity:0.8;text-transform:uppercase;letter-spacing:1px;}
+#main{
+  flex:1;width:100%;max-width:440px;
+  display:flex;flex-direction:column;align-items:center;
+  padding:10px 8px 6px;gap:8px;overflow:hidden;
+}
+#boardWrap{
+  position:relative;
+  border-radius:10px;
+  box-shadow:0 8px 30px rgba(0,0,0,0.7);
+  flex-shrink:0;
+}
+#boardCanvas{display:block;border-radius:10px;}
+#ghost{
+  position:absolute;top:0;left:0;
+  pointer-events:none;border-radius:10px;
+}
+#statusBar{
+  color:rgba(255,255,255,0.65);
+  font-size:12px;text-align:center;
+  flex-shrink:0;min-height:16px;
+}
+#traySection{
+  width:100%;display:flex;flex-direction:column;gap:5px;
+  flex:1;min-height:0;
+}
+#trayLbl{
+  color:rgba(255,255,255,0.5);font-size:11px;
+  text-align:center;letter-spacing:1px;text-transform:uppercase;
+  flex-shrink:0;
+}
+#trayScroll{
+  overflow-x:auto;overflow-y:hidden;
+  -webkit-overflow-scrolling:touch;
+  scrollbar-width:none;flex-shrink:0;
+}
+#trayScroll::-webkit-scrollbar{display:none;}
+#trayCanvas{display:block;border-radius:8px;}
+#btnRow{
+  display:flex;gap:8px;width:100%;flex-shrink:0;
+}
+.gBtn{
+  flex:1;padding:11px 0;border:none;border-radius:10px;
+  font-size:13px;font-weight:900;cursor:pointer;
+  letter-spacing:.5px;transition:transform .1s,opacity .1s;
+}
+.gBtn:active{transform:scale(.95);opacity:.8;}
+#btnRotate{background:#1565C0;color:#fff;}
+#btnUndo{background:rgba(255,255,255,.1);color:#fff;border:1px solid rgba(255,255,255,.15);}
+#btnNew{background:#c62828;color:#fff;}
+/* OVERLAY */
+#overlay{
+  display:none;position:fixed;inset:0;
+  background:rgba(0,0,0,.88);z-index:200;
+  flex-direction:column;align-items:center;justify-content:center;
+}
+#overlay.show{display:flex;}
+#oBox{
+  background:#161b22;border-radius:22px;
+  padding:36px 32px;text-align:center;max-width:300px;
+  border:2px solid rgba(255,255,255,.08);
+}
+#oEmoji{font-size:64px;margin-bottom:10px;}
+#oTitle{font-size:38px;font-weight:900;color:#fff;margin-bottom:6px;}
+#oMsg{color:rgba(255,255,255,.65);font-size:14px;line-height:1.5;margin-bottom:22px;}
+#oScore{font-size:24px;color:#FFD700;font-weight:900;margin-bottom:18px;}
+#oBtn{
+  background:linear-gradient(180deg,#FFD700,#FF8F00);
+  border:none;border-radius:30px;padding:14px 44px;
+  font-size:20px;font-weight:900;color:#7a3f00;cursor:pointer;
+  box-shadow:0 6px 20px rgba(0,0,0,.4);
+}
+#oBtn:active{transform:scale(.96);}
+/* Floating drag piece */
+#dragImg{
+  position:fixed;pointer-events:none;z-index:300;
+  display:none;opacity:.85;
+}
+</style>
+</head>
+<body>
+
+<div id="header">
+  <div id="gameTitle">CILADA!</div>
+  <div class="hstat"><div class="hnum" id="hScore">0</div><div class="hlbl">Pontos</div></div>
+  <div class="hstat"><div class="hnum" id="hPieces">0</div><div class="hlbl">Peças</div></div>
+</div>
+
+<div id="main">
+  <div id="boardWrap">
+    <canvas id="boardCanvas"></canvas>
+    <canvas id="ghost"></canvas>
+  </div>
+  <div id="statusBar">Selecione uma peça e toque no tabuleiro para encaixar</div>
+  <div id="traySection">
+    <div id="trayLbl">Suas Peças — arraste para o tabuleiro</div>
+    <div id="trayScroll"><canvas id="trayCanvas"></canvas></div>
+  </div>
+  <div id="btnRow">
+    <button class="gBtn" id="btnRotate">↻ Girar</button>
+    <button class="gBtn" id="btnUndo">↩ Desfazer</button>
+    <button class="gBtn" id="btnNew">↺ Novo Jogo</button>
+  </div>
+</div>
+
+<div id="overlay">
+  <div id="oBox">
+    <div id="oEmoji">🎉</div>
+    <div id="oTitle" id="oTitle">VITÓRIA!</div>
+    <div id="oScore"></div>
+    <div id="oMsg"></div>
+    <button id="oBtn">JOGAR NOVAMENTE</button>
+  </div>
+</div>
+
+<canvas id="dragImg"></canvas>
+
+<script>
+// =============================================
+//  CILADA! — Jogo de Encaixe de Peças
+//  Lógica baseada em matriz bidimensional
+// =============================================
+
+// ── CONSTANTES ──
+const ROWS = 8, COLS = 8;
+let CELL = 44; // px por célula (recalculado no setup)
+
+const PIECE_COLORS = [
+  '#F44336','#E91E63','#9C27B0','#3F51B5','#2196F3',
+  '#00BCD4','#009688','#4CAF50','#CDDC39','#FF9800',
+  '#FF5722','#795548','#607D8B','#FF4081','#00E5FF'
+];
+
+// ── DEFINIÇÕES DE PEÇAS (poliominós) ──
+// Cada peça: array de [row_offset, col_offset]
+const PIECE_SHAPES = [
+  [[0,0],[0,1],[0,2],[0,3]],           // I4
+  [[0,0],[0,1],[0,2]],                  // I3
+  [[0,0],[0,1]],                        // I2
+  [[0,0]],                              // Ponto
+  [[0,0],[0,1],[1,0],[1,1]],            // O (2×2)
+  [[0,0],[1,0],[2,0],[2,1]],            // L
+  [[0,1],[1,1],[2,0],[2,1]],            // J
+  [[0,0],[0,1],[0,2],[1,1]],            // T
+  [[0,1],[0,2],[1,0],[1,1]],            // S
+  [[0,0],[0,1],[1,1],[1,2]],            // Z
+  [[0,0],[0,1],[1,0],[1,1],[2,0]],      // P5
+  [[0,0],[0,1],[0,2],[1,0],[2,0]],      // L5
+  [[0,1],[1,0],[1,1],[1,2],[2,1]],      // Cruz
+  [[0,0],[0,1],[0,2],[1,2],[2,2]],      // Canto
+  [[0,0],[1,0],[2,0],[2,1],[2,2]],      // C
+  [[0,0],[0,1],[1,1],[2,1],[2,2]],      // W
+  [[0,0],[0,1],[0,2],[1,0],[1,1]],      // P2
+  [[0,0],[0,1],[0,2],[0,3],[1,0]],      // L4
+];
+
+// ── FUNÇÕES AUXILIARES DE PEÇAS ──
+
+function normalizePiece(cells) {
+  const minR = Math.min(...cells.map(([r])=>r));
+  const minC = Math.min(...cells.map(([,c])=>c));
+  return cells.map(([r,c])=>[r-minR, c-minC]);
+}
+
+// Rotação 90° horário: (r,c) → (c, -r)
+function rotateCW(cells) {
+  return normalizePiece(cells.map(([r,c])=>[c,-r]));
+}
+
+function pieceBounds(cells) {
+  return {
+    rows: Math.max(...cells.map(([r])=>r)) + 1,
+    cols: Math.max(...cells.map(([,c])=>c)) + 1
+  };
+}
+
+function cellsEqual(a, b) {
+  if (a.length !== b.length) return false;
+  const sa = a.slice().sort((x,y)=>x[0]-y[0]||x[1]-y[1]);
+  const sb = b.slice().sort((x,y)=>x[0]-y[0]||x[1]-y[1]);
+  return sa.every(([r,c],i)=>sb[i][0]===r && sb[i][1]===c);
+}
+
+function uniqueRotations(cells) {
+  const rots = [];
+  let cur = normalizePiece(cells);
+  for (let i=0; i<4; i++) {
+    if (!rots.some(r=>cellsEqual(r,cur))) rots.push(cur.map(x=>[...x]));
+    cur = rotateCW(cur);
+  }
+  return rots;
+}
+
+// ── ESTADO DO JOGO ──
+// board[r][c] = null (vazio) ou string de cor (ocupado)
+let board = [];
+let pieces = []; // [{cells, color, rotations, rotIdx}]
+let selectedIdx = -1; // índice da peça selecionada no tray
+let score = 0;
+let history = []; // para desfazer
+let gameActive = false;
+
+// ── CANVASES ──
+const boardCanvas = document.getElementById('boardCanvas');
+const bCtx = boardCanvas.getContext('2d');
+const ghostCanvas = document.getElementById('ghost');
+const gCtx = ghostCanvas.getContext('2d');
+const trayCanvas = document.getElementById('trayCanvas');
+const tCtx = trayCanvas.getContext('2d');
+const dragCanvas = document.getElementById('dragImg');
+const dCtx = dragCanvas.getContext('2d');
+
+// ── SETUP DE TAMANHO ──
+function setupSizes() {
+  const maxW = Math.min(window.innerWidth, 440) - 16;
+  CELL = Math.floor(maxW / COLS);
+  const bW = COLS * CELL, bH = ROWS * CELL;
+  boardCanvas.width = bW; boardCanvas.height = bH;
+  ghostCanvas.width = bW; ghostCanvas.height = bH;
+  boardCanvas.style.width = bW+'px'; boardCanvas.style.height = bH+'px';
+  ghostCanvas.style.width = bW+'px'; ghostCanvas.style.height = bH+'px';
+}
+
+// ── GERAÇÃO DE PUZZLE ──
+// Estratégia: preencher tabuleiro aleatoriamente com peças e devolver ao jogador
+
+function generateGame() {
+  board = Array.from({length:ROWS}, ()=>new Array(COLS).fill(null));
+  pieces = [];
+  score = 0;
+  selectedIdx = -1;
+  history = [];
+  gameActive = true;
+
+  // Seleciona 7-9 peças aleatórias
+  const shuffled = [...PIECE_SHAPES].sort(()=>Math.random()-.5);
+  const chosen = shuffled.slice(0, 7 + Math.floor(Math.random()*3));
+
+  const placed = [];
+  const tempBoard = Array.from({length:ROWS}, ()=>new Array(COLS).fill(null));
+
+  for (let attempt=0; attempt<200; attempt++) {
+    // Tenta colocar as peças na ordem embaralhada
+    const order = chosen.slice().sort(()=>Math.random()-.5);
+    const tb = Array.from({length:ROWS}, ()=>new Array(COLS).fill(null));
+    const p = [];
+    let ok = true;
+
+    for (let i=0; i<order.length; i++) {
+      const shape = order[i];
+      const rots = uniqueRotations(shape);
+      const rot = rots[Math.floor(Math.random()*rots.length)];
+      const color = PIECE_COLORS[i % PIECE_COLORS.length];
+
+      let placed2 = false;
+      // Tentar posições aleatórias
+      const pos = [];
+      for (let r=0; r<ROWS; r++) for (let c=0; c<COLS; c++) pos.push([r,c]);
+      pos.sort(()=>Math.random()-.5);
+
+      for (const [sr,sc] of pos) {
+        if (canPlace(tb, rot, sr, sc)) {
+          placeOnMatrix(tb, rot, sr, sc, color);
+          p.push({cells: normalizePiece(rot), color, rotations: rots, rotIdx:0});
+          placed2 = true;
+          break;
+        }
+      }
+      if (!placed2) { ok=false; break; }
+    }
+
+    if (ok && p.length >= 5) {
+      // Sucesso — board permanece vazio, pieces vai para o tray
+      pieces = p.map(pc=>({...pc, cells: normalizePiece(pc.rotations[0])}));
+      // Embaralha peças no tray
+      pieces.sort(()=>Math.random()-.5);
+      // Recolorizar para variedade
+      pieces.forEach((pc,i)=>{ pc.color = PIECE_COLORS[(i*3+7)%PIECE_COLORS.length]; });
+      break;
+    }
+  }
+
+  updateHUD();
+  drawBoard();
+  drawTray();
+  clearGhost();
+}
+
+// ── LÓGICA CORE: VALIDAÇÃO DE ENCAIXE ──
+
+// Verifica se a peça pode ser colocada na posição (startR, startC)
+function canPlace(matrix, cells, startR, startC) {
+  for (const [dr, dc] of cells) {
+    const r = startR + dr;
+    const c = startC + dc;
+    // a) Verificação de limites (Index Out of Bounds)
+    if (r < 0 || r >= ROWS || c < 0 || c >= COLS) return false;
+    // b) Célula já ocupada
+    if (matrix[r][c] !== null) return false;
+  }
+  return true;
+}
+
+// Coloca peça na matriz (muda célula de null para cor)
+function placeOnMatrix(matrix, cells, startR, startC, color) {
+  for (const [dr, dc] of cells) {
+    matrix[startR+dr][startC+dc] = color;
+  }
+}
+
+// Remove peça da matriz
+function removeFromMatrix(matrix, cells, startR, startC) {
+  for (const [dr, dc] of cells) {
+    matrix[startR+dr][startC+dc] = null;
+  }
+}
+
+// ── CONDIÇÃO DE VITÓRIA E DERROTA ──
+
+function checkWin() {
+  // VITÓRIA: todas as peças foram colocadas
+  if (pieces.length === 0) return 'win';
+
+  // CILADA: verifica se alguma peça restante pode ser colocada em alguma posição
+  for (const pc of pieces) {
+    for (const rot of pc.rotations) {
+      for (let r=0; r<ROWS; r++) {
+        for (let c=0; c<COLS; c++) {
+          if (canPlace(board, rot, r, c)) return null; // ainda há jogadas
+        }
+      }
+    }
+  }
+  return 'cilada'; // nenhuma jogada possível = CILADA!
+}
+
+// ── COLOCAR PEÇA ──
+
+function placePiece(pieceIdx, boardR, boardC) {
+  const pc = pieces[pieceIdx];
+  if (!canPlace(board, pc.cells, boardR, boardC)) return false;
+
+  // Salva estado para desfazer
+  history.push({
+    board: board.map(row=>[...row]),
+    pieces: JSON.parse(JSON.stringify(pieces)),
+    score
+  });
+
+  // Coloca peça no tabuleiro
+  placeOnMatrix(board, pc.cells, boardR, boardC, pc.color);
+
+  // Calcula pontuação: 10 × número de células da peça
+  const pts = pc.cells.length * 10;
+  score += pts;
+
+  // Remove peça do tray
+  pieces.splice(pieceIdx, 1);
+  if (selectedIdx >= pieces.length) selectedIdx = pieces.length - 1;
+
+  updateHUD();
+  drawBoard();
+  drawTray();
+  clearGhost();
+
+  // Verifica condição de fim
+  const result = checkWin();
+  if (result === 'win') {
+    setTimeout(()=>showOverlay('win'), 400);
+  } else if (result === 'cilada') {
+    setTimeout(()=>showOverlay('cilada'), 600);
+  }
+
+  return true;
+}
+
+// ── DESFAZER ──
+
+function undoLast() {
+  if (history.length === 0) return;
+  const prev = history.pop();
+  board = prev.board;
+  pieces = prev.pieces;
+  score = prev.score;
+  if (selectedIdx >= pieces.length) selectedIdx = pieces.length-1;
+  updateHUD();
+  drawBoard();
+  drawTray();
+  clearGhost();
+}
+
+// ── ROTACIONAR PEÇA SELECIONADA ──
+
+function rotateSelected() {
+  if (selectedIdx < 0 || selectedIdx >= pieces.length) return;
+  const pc = pieces[selectedIdx];
+  pc.rotIdx = (pc.rotIdx + 1) % pc.rotations.length;
+  pc.cells = normalizePiece(pc.rotations[pc.rotIdx]);
+  drawTray();
+  if (ghostPos) drawGhost(ghostPos.r, ghostPos.c);
+}
+
+// ── DESENHO DO TABULEIRO ──
+
+function drawBoard() {
+  const ctx = bCtx;
+  ctx.clearRect(0,0,boardCanvas.width,boardCanvas.height);
+
+  // Fundo do tabuleiro
+  const bg = ctx.createLinearGradient(0,0,boardCanvas.width,boardCanvas.height);
+  bg.addColorStop(0,'#1c2333');
+  bg.addColorStop(1,'#0d1117');
+  ctx.fillStyle = bg;
+  ctx.roundRect(0,0,boardCanvas.width,boardCanvas.height,10);
+  ctx.fill();
+
+  // Células
+  for (let r=0; r<ROWS; r++) {
+    for (let c=0; c<COLS; c++) {
+      const x = c*CELL, y = r*CELL;
+      if (board[r][c]) {
+        // Célula ocupada: cor da peça
+        const col = board[r][c];
+        ctx.fillStyle = col;
+        ctx.fillRect(x+1, y+1, CELL-2, CELL-2);
+        // Brilho superior
+        ctx.fillStyle = 'rgba(255,255,255,0.25)';
+        ctx.fillRect(x+1, y+1, CELL-2, Math.floor(CELL*0.35));
+        // Sombra inferior
+        ctx.fillStyle = 'rgba(0,0,0,0.2)';
+        ctx.fillRect(x+1, y+Math.floor(CELL*0.65), CELL-2, Math.floor(CELL*0.35));
+        // Borda da célula
+        ctx.strokeStyle = 'rgba(0,0,0,0.3)';
+        ctx.lineWidth = 1.5;
+        ctx.strokeRect(x+1.5, y+1.5, CELL-3, CELL-3);
+      } else {
+        // Célula vazia
+        ctx.fillStyle = (r+c)%2===0 ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.1)';
+        ctx.fillRect(x, y, CELL, CELL);
+        // Grade
+        ctx.strokeStyle = 'rgba(255,255,255,0.07)';
+        ctx.lineWidth = 0.5;
+        ctx.strokeRect(x+.5, y+.5, CELL-1, CELL-1);
+      }
+    }
+  }
+
+  // Linhas de grade principais
+  ctx.strokeStyle = 'rgba(255,255,255,0.12)';
+  ctx.lineWidth = 1;
+  for (let r=0; r<=ROWS; r++) {
+    ctx.beginPath();
+    ctx.moveTo(0, r*CELL);
+    ctx.lineTo(COLS*CELL, r*CELL);
+    ctx.stroke();
+  }
+  for (let c=0; c<=COLS; c++) {
+    ctx.beginPath();
+    ctx.moveTo(c*CELL, 0);
+    ctx.lineTo(c*CELL, ROWS*CELL);
+    ctx.stroke();
+  }
+}
+
+// ── GHOST (PREVIEW DA PEÇA) ──
+
+let ghostPos = null;
+
+function clearGhost() {
+  ghostPos = null;
+  gCtx.clearRect(0,0,ghostCanvas.width,ghostCanvas.height);
+}
+
+function drawGhost(boardR, boardC) {
+  gCtx.clearRect(0,0,ghostCanvas.width,ghostCanvas.height);
+  if (selectedIdx < 0 || selectedIdx >= pieces.length) return;
+
+  const pc = pieces[selectedIdx];
+  const valid = canPlace(board, pc.cells, boardR, boardC);
+  ghostPos = {r:boardR, c:boardC, valid};
+
+  for (const [dr,dc] of pc.cells) {
+    const r = boardR+dr, c = boardC+dc;
+    if (r<0||r>=ROWS||c<0||c>=COLS) continue;
+    const x = c*CELL, y = r*CELL;
+    gCtx.fillStyle = valid ? 'rgba(100,255,100,0.45)' : 'rgba(255,80,80,0.4)';
+    gCtx.fillRect(x+2,y+2,CELL-4,CELL-4);
+    gCtx.strokeStyle = valid ? 'rgba(0,255,0,0.8)' : 'rgba(255,0,0,0.7)';
+    gCtx.lineWidth = 2;
+    gCtx.strokeRect(x+2,y+2,CELL-4,CELL-4);
+  }
+}
+
+// ── DESENHO DO TRAY ──
+
+const TRAY_CELL = 20; // px por célula nas peças do tray
+const TRAY_PAD = 10;
+const TRAY_SLOT = 5*TRAY_CELL + TRAY_PAD*2; // slot de cada peça: 110px
+
+function drawTray() {
+  const total = pieces.length;
+  const tW = Math.max(total * TRAY_SLOT + TRAY_PAD, 10);
+  const tH = 5*TRAY_CELL + TRAY_PAD*2;
+  trayCanvas.width = tW;
+  trayCanvas.height = tH;
+  trayCanvas.style.height = tH+'px';
+  document.getElementById('trayScroll').style.height = tH+'px';
+
+  tCtx.clearRect(0,0,tW,tH);
+
+  pieces.forEach((pc, i) => {
+    const slotX = i * TRAY_SLOT + TRAY_PAD/2;
+    const isSelected = i === selectedIdx;
+
+    // Slot background
+    tCtx.fillStyle = isSelected ? 'rgba(255,255,255,0.12)' : 'rgba(255,255,255,0.04)';
+    tCtx.strokeStyle = isSelected ? 'rgba(255,255,255,0.5)' : 'rgba(255,255,255,0.1)';
+    tCtx.lineWidth = isSelected ? 2 : 1;
+    roundRect(tCtx, slotX, 2, TRAY_SLOT-TRAY_PAD/2, tH-4, 8);
+    tCtx.fill(); tCtx.stroke();
+
+    // Centralizar peça no slot
+    const {rows:pr, cols:pc2} = pieceBounds(pc.cells);
+    const offX = slotX + TRAY_PAD/2 + Math.floor((TRAY_SLOT-TRAY_PAD - pc2*TRAY_CELL)/2);
+    const offY = TRAY_PAD + Math.floor((3*TRAY_CELL - pr*TRAY_CELL)/2);
+
+    for (const [dr,dc] of pc.cells) {
+      const cx = offX + dc*TRAY_CELL;
+      const cy = offY + dr*TRAY_CELL;
+      tCtx.fillStyle = pc.color;
+      tCtx.fillRect(cx+1,cy+1,TRAY_CELL-2,TRAY_CELL-2);
+      // Brilho
+      tCtx.fillStyle='rgba(255,255,255,0.3)';
+      tCtx.fillRect(cx+1,cy+1,TRAY_CELL-2,Math.floor(TRAY_CELL*.4));
+      tCtx.strokeStyle='rgba(0,0,0,0.25)';
+      tCtx.lineWidth=1;
+      tCtx.strokeRect(cx+1.5,cy+1.5,TRAY_CELL-3,TRAY_CELL-3);
+    }
+
+    // Indicador de seleção
+    if (isSelected) {
+      tCtx.fillStyle = '#FFD700';
+      tCtx.font = 'bold 9px Arial';
+      tCtx.textAlign = 'center';
+      tCtx.fillText('▼', slotX + (TRAY_SLOT-TRAY_PAD/2)/2, tH-3);
+    }
+  });
+}
+
+function roundRect(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x+r, y);
+  ctx.lineTo(x+w-r, y);
+  ctx.quadraticCurveTo(x+w, y, x+w, y+r);
+  ctx.lineTo(x+w, y+h-r);
+  ctx.quadraticCurveTo(x+w, y+h, x+w-r, y+h);
+  ctx.lineTo(x+r, y+h);
+  ctx.quadraticCurveTo(x, y+h, x, y+h-r);
+  ctx.lineTo(x, y+r);
+  ctx.quadraticCurveTo(x, y, x+r, y);
+  ctx.closePath();
+}
+
+// ── HUD ──
+
+function updateHUD() {
+  document.getElementById('hScore').textContent = score;
+  document.getElementById('hPieces').textContent = pieces.length;
+}
+
+// ── OVERLAY ──
+
+function showOverlay(type) {
+  const emo = document.getElementById('oEmoji');
+  const ttl = document.getElementById('oTitle');
+  const msg = document.getElementById('oMsg');
+  const scr = document.getElementById('oScore');
+
+  if (type === 'win') {
+    emo.textContent = '🏆';
+    ttl.textContent = 'VITÓRIA!';
+    ttl.style.color = '#FFD700';
+    msg.textContent = 'Você encaixou todas as peças! Incrível!';
+  } else {
+    emo.textContent = '🪤';
+    ttl.textContent = 'CILADA!';
+    ttl.style.color = '#FF5252';
+    msg.textContent = `Ainda restam ${pieces.length} peça(s) mas não há espaço para encaixá-las. Você caiu na cilada!`;
+  }
+  scr.textContent = `Pontuação: ${score}`;
+  document.getElementById('overlay').classList.add('show');
+  gameActive = false;
+}
+
+// ── INTERAÇÃO: MOUSE & TOUCH ──
+
+// Coordenada relativa ao boardCanvas
+function getBoardCoord(clientX, clientY) {
+  const rect = boardCanvas.getBoundingClientRect();
+  const scaleX = boardCanvas.width / rect.width;
+  const scaleY = boardCanvas.height / rect.height;
+  const x = (clientX - rect.left) * scaleX;
+  const y = (clientY - rect.top) * scaleY;
+  return {r: Math.floor(y/CELL), c: Math.floor(x/CELL)};
+}
+
+// Coordenada clicada no trayCanvas → índice da peça
+function getTrayPieceIdx(clientX) {
+  const rect = trayCanvas.getBoundingClientRect();
+  const x = clientX - rect.left + document.getElementById('trayScroll').scrollLeft;
+  const idx = Math.floor(x / TRAY_SLOT);
+  return (idx >= 0 && idx < pieces.length) ? idx : -1;
+}
+
+// Estado de interação
+let interacting = false;
+let interactMode = null; // 'board' | 'tray'
+let lastBoardCoord = null;
+
+// ── EVENTOS DO TABULEIRO ──
+
+boardCanvas.addEventListener('mousemove', e => {
+  if (!gameActive || selectedIdx < 0) return;
+  const {r,c} = getBoardCoord(e.clientX, e.clientY);
+  if (r>=0&&r<ROWS&&c>=0&&c<COLS) drawGhost(r,c);
+  else clearGhost();
+});
+
+boardCanvas.addEventListener('mouseleave', () => clearGhost());
+
+boardCanvas.addEventListener('click', e => {
+  if (!gameActive || selectedIdx < 0) return;
+  const {r,c} = getBoardCoord(e.clientX, e.clientY);
+  if (r<0||r>=ROWS||c<0||c>=COLS) return;
+  const placed = placePiece(selectedIdx, r, c);
+  if (!placed) {
+    setStatus('Não cabe aqui! Tente outro lugar. 🚫');
+    shakeBoard();
+  } else {
+    setStatus(pieces.length > 0
+      ? `Peça encaixada! ${pieces.length} restante(s).`
+      : 'Última peça colocada!');
+  }
+});
+
+// ── EVENTOS DO TRAY ──
+
+trayCanvas.addEventListener('click', e => {
+  if (!gameActive) return;
+  const idx = getTrayPieceIdx(e.clientX);
+  if (idx >= 0) {
+    selectedIdx = idx;
+    setStatus(`Peça ${idx+1} selecionada. Toque no tabuleiro para encaixar.`);
+    drawTray();
+    clearGhost();
+  }
+});
+
+// ── EVENTOS DE TOUCH (TABULEIRO) ──
+
+boardCanvas.addEventListener('touchstart', e => {
+  e.preventDefault();
+  if (!gameActive || selectedIdx < 0) return;
+  const t = e.touches[0];
+  const {r,c} = getBoardCoord(t.clientX, t.clientY);
+  lastBoardCoord = {r,c};
+  if (r>=0&&r<ROWS&&c>=0&&c<COLS) drawGhost(r,c);
+}, {passive:false});
+
+boardCanvas.addEventListener('touchmove', e => {
+  e.preventDefault();
+  if (!gameActive || selectedIdx < 0) return;
+  const t = e.touches[0];
+  const {r,c} = getBoardCoord(t.clientX, t.clientY);
+  lastBoardCoord = {r,c};
+  if (r>=0&&r<ROWS&&c>=0&&c<COLS) drawGhost(r,c);
+  else clearGhost();
+}, {passive:false});
+
+boardCanvas.addEventListener('touchend', e => {
+  e.preventDefault();
+  if (!gameActive || selectedIdx < 0 || !lastBoardCoord) return;
+  const {r,c} = lastBoardCoord;
+  if (r>=0&&r<ROWS&&c>=0&&c<COLS) {
+    const placed = placePiece(selectedIdx, r, c);
+    if (!placed) {
+      setStatus('Não cabe aqui! Tente outro lugar. 🚫');
+      shakeBoard();
+    } else {
+      setStatus(pieces.length > 0
+        ? `Peça encaixada! ${pieces.length} restante(s).`
+        : 'Última peça colocada!');
+    }
+  }
+  lastBoardCoord = null;
+  clearGhost();
+}, {passive:false});
+
+// ── EVENTOS DO TRAY (TOUCH) ──
+
+trayCanvas.addEventListener('touchend', e => {
+  e.preventDefault();
+  if (!gameActive) return;
+  const t = e.changedTouches[0];
+  const idx = getTrayPieceIdx(t.clientX);
+  if (idx >= 0) {
+    selectedIdx = idx;
+    setStatus(`Peça ${idx+1} selecionada. Toque no tabuleiro para encaixar.`);
+    drawTray();
+    clearGhost();
+  }
+}, {passive:false});
+
+// ── STATUS TEXT ──
+
+let statusTimer = null;
+function setStatus(txt) {
+  document.getElementById('statusBar').textContent = txt;
+  clearTimeout(statusTimer);
+  statusTimer = setTimeout(()=>{
+    document.getElementById('statusBar').textContent =
+      selectedIdx >= 0 && selectedIdx < pieces.length
+        ? `Peça ${selectedIdx+1} selecionada — toque no tabuleiro`
+        : 'Selecione uma peça do tray';
+  }, 2500);
+}
+
+// ── SHAKE ANIMATION ──
+
+function shakeBoard() {
+  const wrap = document.getElementById('boardWrap');
+  wrap.style.transition = 'transform .07s';
+  let n = 0;
+  const dirs = [6,-6,4,-4,2,-2,0];
+  function step() {
+    if (n >= dirs.length) { wrap.style.transform=''; return; }
+    wrap.style.transform = `translateX(${dirs[n]}px)`;
+    n++; setTimeout(step, 70);
+  }
+  step();
+}
+
+// ── BOTÕES ──
+
+document.getElementById('btnRotate').addEventListener('click', () => {
+  rotateSelected();
+  if (selectedIdx >= 0) setStatus('Peça girada! Toque no tabuleiro para encaixar.');
+});
+
+document.getElementById('btnUndo').addEventListener('click', () => {
+  undoLast();
+  setStatus('Jogada desfeita.');
+});
+
+document.getElementById('btnNew').addEventListener('click', () => {
+  document.getElementById('overlay').classList.remove('show');
+  generateGame();
+  setStatus('Novo jogo! Selecione uma peça para começar.');
+});
+
+document.getElementById('oBtn').addEventListener('click', () => {
+  document.getElementById('overlay').classList.remove('show');
+  generateGame();
+  setStatus('Novo jogo! Selecione uma peça para começar.');
+});
+
+// ── INÍCIO ──
+
+setupSizes();
+generateGame();
+setStatus('Selecione uma peça abaixo e toque no tabuleiro para encaixar!');
+</script>
+</body>
+</html>
